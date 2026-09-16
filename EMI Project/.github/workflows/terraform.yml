@@ -1,0 +1,109 @@
+name: Terraform CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, staging, prod]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        working-directory: ./EMI Project/environments/${{ matrix.environment }}
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        working-directory: ./EMI Project/environments/${{ matrix.environment }}
+        run: terraform validate
+
+  plan:
+    name: Plan infrastructure
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, staging]
+
+    environment:
+      name: ${{ matrix.environment }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/emi-${{ matrix.environment }}-deploy-role
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform init with backend
+        working-directory: ./EMI\ Project/environments/${{ matrix.environment }}
+        run: terraform init -backend-config=backend.hcl
+
+      - name: Terraform plan
+        working-directory: ./EMI\ Project/environments/${{ matrix.environment }}
+        run: terraform plan -no-color -out=tfplan
+
+  apply-prod:
+    name: Apply prod
+    needs: plan
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/emi-prod-deploy-role
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform init with backend
+        working-directory: ./EMI\ Project/environments/prod
+        run: terraform init -backend-config=backend.hcl
+
+      - name: Terraform apply
+        working-directory: ./EMI\ Project/environments/prod
+        run: terraform apply -auto-approve tfplan
