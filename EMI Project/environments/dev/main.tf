@@ -32,6 +32,7 @@ module "security" {
   environment = var.environment
   project     = var.project
   vpc_id      = module.network.vpc_id
+  vpc_cidr    = "10.10.0.0/16"
   kms_alias   = "main"
   secrets = {
     "app/db-password" = "changeme-dev"
@@ -50,7 +51,7 @@ module "data" {
   db_username            = "appuser"
   db_password            = "ChangeMe123!"
   db_subnet_group_name   = "dev-db-subnet-group"
-  vpc_security_group_ids = []
+  vpc_security_group_ids = [module.security.db_security_group_id]
   bucket_name            = "emi-dev-artifacts"
   dynamodb_name          = "emi-dev-locks"
 }

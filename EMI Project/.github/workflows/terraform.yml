@@ -43,17 +43,13 @@ jobs:
         working-directory: ./EMI Project/environments/${{ matrix.environment }}
         run: terraform validate
 
-  plan:
-    name: Plan infrastructure
+  plan-dev:
+    name: Plan dev
     needs: validate
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        environment: [dev, staging]
-
     environment:
-      name: ${{ matrix.environment }}
-
+      name: dev
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -61,7 +57,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::123456789012:role/emi-${{ matrix.environment }}-deploy-role
+          role-to-assume: arn:aws:iam::123456789012:role/emi-dev-deploy-role
           aws-region: us-east-1
 
       - name: Setup Terraform
@@ -70,21 +66,50 @@ jobs:
           terraform_version: 1.7.5
 
       - name: Terraform init with backend
-        working-directory: ./EMI\ Project/environments/${{ matrix.environment }}
+        working-directory: ./EMI\ Project/environments/dev
         run: terraform init -backend-config=backend.hcl
 
       - name: Terraform plan
-        working-directory: ./EMI\ Project/environments/${{ matrix.environment }}
+        working-directory: ./EMI\ Project/environments/dev
+        run: terraform plan -no-color -out=tfplan
+
+  plan-staging:
+    name: Plan staging
+    needs: validate
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/emi-staging-deploy-role
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform init with backend
+        working-directory: ./EMI\ Project/environments/staging
+        run: terraform init -backend-config=backend.hcl
+
+      - name: Terraform plan
+        working-directory: ./EMI\ Project/environments/staging
         run: terraform plan -no-color -out=tfplan
 
   apply-prod:
     name: Apply prod
-    needs: plan
+    needs: plan-staging
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
       name: prod
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -103,6 +128,10 @@ jobs:
       - name: Terraform init with backend
         working-directory: ./EMI\ Project/environments/prod
         run: terraform init -backend-config=backend.hcl
+
+      - name: Terraform plan
+        working-directory: ./EMI\ Project/environments/prod
+        run: terraform plan -no-color -out=tfplan
 
       - name: Terraform apply
         working-directory: ./EMI\ Project/environments/prod

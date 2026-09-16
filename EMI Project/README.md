@@ -1,101 +1,208 @@
-# Terraform 3-Tier AWS Repository
+# EMI Project Terraform Repository
 
-This repository is structured for a production-grade three-tier application deployed to AWS across separate `dev`, `staging`, and `prod` environments.
+This repository provides a production-oriented Terraform structure for a 3-tier AWS application deployed across `dev`, `staging`, and `prod` environments. It is organized around reusable modules, layer-based composition, and environment-specific state isolation.
 
 ## Repository layout
 
 ```text
 EMI Project/
-├── README.md
+├── .github/
+│   └── workflows/
+│       └── terraform.yml
 ├── .gitignore
-├── versions.tf
+├── README.md
 ├── providers.tf
+├── versions.tf
 ├── modules/
-│   ├── vpc/
-│   ├── internet-gateway/
-│   ├── nat-gateway/
-│   ├── elastic-ip/
-│   ├── vpc-endpoints/
-│   ├── eks/
-│   ├── ec2/
-│   ├── ecr/
-│   ├── rds/
-│   ├── secrets-manager/
-│   ├── ssm-parameter/
-│   ├── kms/
-│   ├── s3/
-│   ├── dynamodb/
-│   ├── iam/
-│   ├── oidc/
-│   ├── cloudwatch/
-│   ├── alb/
 │   ├── acm/
-│   ├── route53/
-│   ├── ssm-session-manager/
+│   ├── alb/
 │   ├── billing/
-│   ├── ci-cd-role/
 │   ├── break-glass-role/
-│   └── tags/
+│   ├── ci-cd-role/
+│   ├── cloudwatch/
+│   ├── dynamodb/
+│   ├── ecr/
+│   ├── ec2/
+│   ├── eks/
+│   ├── elastic-ip/
+│   ├── iam/
+│   ├── internet-gateway/
+│   ├── kms/
+│   ├── nat-gateway/
+│   ├── oidc/
+│   ├── rds/
+│   ├── route53/
+│   ├── s3/
+│   ├── secrets-manager/
+│   ├── security-group/
+│   ├── ssm-parameter/
+│   ├── ssm-session-manager/
+│   ├── tags/
+│   ├── vpc/
+│   └── vpc-endpoints/
 ├── layers/
-│   ├── network/
-│   ├── security/
-│   ├── data/
 │   ├── compute/
-│   ├── app/
+│   ├── data/
+│   ├── delivery/
+│   ├── network/
 │   ├── observability/
-│   └── delivery/
+│   └── security/
 ├── environments/
 │   ├── dev/
 │   │   ├── backend.hcl
 │   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   └── terraform.tfvars
+│   │   ├── terraform.tfvars
+│   │   └── variables.tf
 │   ├── staging/
 │   │   ├── backend.hcl
 │   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   └── terraform.tfvars
+│   │   ├── terraform.tfvars
+│   │   └── variables.tf
 │   └── prod/
 │       ├── backend.hcl
 │       ├── main.tf
-│       ├── variables.tf
-│       └── terraform.tfvars
-└── scripts/
-    ├── drift-check.sh
-    ├── tfsec.sh
-    └── oidc-setup.sh
+│       ├── terraform.tfvars
+│       └── variables.tf
+├── scripts/
+│   ├── bootstrap-backend.sh
+│   ├── drift-check.sh
+│   ├── oidc-setup.sh
+│   └── tfsec.sh
+└── .terraform.lock.hcl (generated during init)
 ```
 
 ## Design principles
 
-- Separate S3 backend and DynamoDB locking tables per environment.
-- State file isolation via `backend.hcl` config files.
-- `for_each` used for environment iteration and multi-resource patterns.
-- Typed variables and explicit outputs across layers.
-- Secret-scoped management using Secrets Manager and SSM Parameter Store.
-- IAM least privilege + break-glass access patterns.
-- CI/CD gates for plan/apply workflows, including drift detection.
-- Provider pinning and consistent AWS tagging for governance.
+- Environment isolation via separate S3 state buckets and DynamoDB lock tables.
+- Layered composition for network, security, data, compute, and delivery concerns.
+- Reusable AWS modules for the services requested in the architecture.
+- Strong IAM and security boundaries with break-glass controls.
+- Provider pinning and default tagging across all AWS resources.
+- CI/CD workflow gating for validate, plan, and approval-based prod apply.
 
-## Tiering
+## Architecture model
 
-- Tier 1: network, IAM, security, and edge services.
-- Tier 2: application runtime, EKS, EC2, ALB, and databases.
-- Tier 3: data, observability, secrets, and delivery workers.
+### Layers
 
-## Example init commands
+- Network layer: VPC, subnets, IGW, NAT gateway, EIP, route tables.
+- Security layer: KMS, Secrets Manager, SSM Parameter Store, security groups.
+- Data layer: RDS, S3, DynamoDB.
+- Compute layer: EKS, ALB, EC2, IRSA/OIDC-ready integration.
+- Observability layer: CloudWatch and Logs.
+- Delivery layer: CI/CD deploy role, break-glass admin access, billing guardrails.
+
+### Environment model
+
+- dev: small footprint, quick iteration, less strict drift cost controls
+- staging: near-prod validation and regression confidence
+- prod: protected approvals, stricter guardrails, targeted rollout controls
+
+## Terraform state backend
+
+Each environment has an isolated backend file in its directory. The backend bootstrap script creates the S3 bucket and DynamoDB lock table needed for a given environment.
+
+### Backend bootstrap
 
 ```bash
-terraform init -backend-config=environments/dev/backend.hcl
-terraform init -backend-config=environments/staging/backend.hcl
-terraform init -backend-config=environments/prod/backend.hcl
+cd scripts
+AWS_REGION=us-east-1 PROJECT=emi ./bootstrap-backend.sh dev
+AWS_REGION=us-east-1 PROJECT=emi ./bootstrap-backend.sh staging
+AWS_REGION=us-east-1 PROJECT=emi ./bootstrap-backend.sh prod
 ```
 
-## Best-practice notes
+This will create the following resources:
+- S3 bucket: `emi-<env>-tfstate`
+- DynamoDB table: `emi-<env>-locks`
 
-- Use `terraform plan -out=tfplan` in CI pipelines and require manual approval for apply.
-- Enable guardrails using `aws_iam_policy` and role conditions.
-- Protect secrets and rotate credentials via Secrets Manager.
-- Keep `key` names unique per environment and workload.
-- Use lifecycle rules and versioning for S3 objects.
-- Configure ACM certs and Route 53 DNS records in the platform layer.
+Then initialize each environment with:
+
+```bash
+cd environments/dev
+terraform init -backend-config=backend.hcl
+
+cd ../staging
+terraform init -backend-config=backend.hcl
+
+cd ../prod
+terraform init -backend-config=backend.hcl
+```
+
+## GitHub Actions release flow
+
+The workflow in [`.github/workflows/terraform.yml`](.github/workflows/terraform.yml) does the following:
+
+1. Validate Terraform formatting and syntax for dev, staging, and prod.
+2. Run dev and staging plan jobs for pull requests and branch pushes.
+3. Require GitHub environment approvals for `dev`, `staging`, and `prod`.
+4. Apply prod only on push to `main` after staging plan and environment approval.
+
+### GitHub environment setup
+
+Create the following GitHub environments in the repository settings:
+- `dev`
+- `staging`
+- `prod`
+
+Then configure environment protection rules:
+- `dev`: require reviewers for production-sensitive changes if desired
+- `staging`: require reviewers and a wait timer
+- `prod`: require reviewers, delay, and the final approval gate before apply
+
+## Security model
+
+### Security groups
+
+The security layer defines separate SGs for:
+- ALB ingress from the internet
+- App tier ingress from ALB only
+- EKS control-plane access from VPC CIDR
+- RDS PostgreSQL ingress from app and EKS SGs
+
+This creates a realistic east-west and ingress segmentation pattern without exposing database ports broadly.
+
+## Operational guidance
+
+### Drift detection
+
+Use the drift checker script:
+
+```bash
+./scripts/drift-check.sh dev
+./scripts/drift-check.sh staging
+./scripts/drift-check.sh prod
+```
+
+### Static analysis
+
+```bash
+./scripts/tfsec.sh
+```
+
+### Break-glass access
+
+The repo includes a break-glass path via IAM group/role patterns in the delivery layer. Use these strictly for emergency interventions and audit access.
+
+## Production hardening checklist
+
+- Keep `terraform.tfvars` values out of source control for real secrets.
+- Use AWS Secrets Manager or SSM Parameter Store for runtime secrets.
+- Restrict IAM roles to the minimum action set needed.
+- Review and approve changes in the `staging` and `prod` GitHub environments.
+- Enforce state bucket encryption and versioning.
+- Add policy checks and scan tools such as tfsec / Checkov in CI.
+
+## Example commands
+
+```bash
+# format
+terraform fmt -recursive
+
+# validate all environments
+cd environments/dev && terraform init -backend=false && terraform validate
+cd ../staging && terraform init -backend=false && terraform validate
+cd ../prod && terraform init -backend=false && terraform validate
+```
+
+## Notes
+
+This repo is intentionally structured as a realistic starting point rather than a fully hardened production deployment. Before going live, replace placeholder account IDs, admin users, and repo identifiers with your real values.

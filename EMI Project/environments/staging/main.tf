@@ -32,6 +32,7 @@ module "security" {
   environment = var.environment
   project     = var.project
   vpc_id      = module.network.vpc_id
+  vpc_cidr    = "10.20.0.0/16"
   kms_alias   = "staging-main"
   secrets = {
     "app/db-password" = "changeme-staging"
@@ -50,7 +51,7 @@ module "data" {
   db_username            = "appuser"
   db_password            = "ChangeMe123!"
   db_subnet_group_name   = "staging-db-subnet-group"
-  vpc_security_group_ids = []
+  vpc_security_group_ids = [module.security.db_security_group_id]
   bucket_name            = "emi-staging-artifacts"
   dynamodb_name          = "emi-staging-locks"
 }
