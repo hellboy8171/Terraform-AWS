@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terraform on AWS — Usage &amp; Best Practices</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f5f2;
+    --surface:#ffffff;
+    --surface-2:#efece6;
+    --ink:#1b1a19;
+    --ink-2:#4d4a46;
+    --ink-3:#7c7871;
+    --line:#dedad2;
+    --accent:#6b3fa0;
+    --accent-soft:#efe7f8;
+    --ok:#2f7a4f;
+    --warn:#a8531b;
+    --danger:#a33a33;
+    --code-bg:#f0ede7;
+    --shadow:0 1px 2px rgba(0,0,0,.06),0 12px 32px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#13131a;
+      --surface:#1b1b24;
+      --surface-2:#22222d;
+      --ink:#eceaf2;
+      --ink-2:#b6b2c2;
+      --ink-3:#83808f;
+      --line:#2e2e3b;
+      --accent:#b58bec;
+      --accent-soft:#2a2136;
+      --ok:#6cc48d;
+      --warn:#e0a061;
+      --danger:#e88a82;
+      --code-bg:#15151d;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#13131a;
+    --surface:#1b1b24;
+    --surface-2:#22222d;
+    --ink:#eceaf2;
+    --ink-2:#b6b2c2;
+    --ink-3:#83808f;
+    --line:#2e2e3b;
+    --accent:#b58bec;
+    --accent-soft:#2a2136;
+    --ok:#6cc48d;
+    --warn:#e0a061;
+    --danger:#e88a82;
+    --code-bg:#15151d;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    display:flex;flex-direction:column;
+    min-height:100vh;min-height:100dvh;
+  }
+  code,pre,.mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  /* ---------- chrome ---------- */
+  .topbar{
+    display:flex;align-items:center;gap:12px;
+    padding:10px clamp(14px,3vw,34px);
+    border-bottom:1px solid var(--line);
+    background:var(--surface);
+    flex:0 0 auto;
+  }
+  .brand{
+    font-family:"Space Grotesk",sans-serif;font-weight:700;
+    font-size:14px;letter-spacing:.02em;
+  }
+  .brand span{color:var(--accent)}
+  .topbar .spacer{flex:1}
+  .chip{
+    font-size:11px;color:var(--ink-3);border:1px solid var(--line);
+    padding:3px 9px;border-radius:999px;white-space:nowrap;
+  }
+  .progress{height:2px;background:var(--line);flex:0 0 auto}
+  .progress i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s ease}
+
+  /* ---------- slide area ---------- */
+  .stage{
+    flex:1 1 auto;min-height:0;
+    display:flex;justify-content:center;
+    padding:clamp(16px,3.2vw,40px);
+    overflow-y:auto;
+  }
+  .slide{display:none;width:100%;max-width:1060px;animation:fade .28s ease}
+  .slide.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .kicker{
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent);font-weight:600;margin-bottom:10px;
+  }
+  h1{
+    font-family:"Space Grotesk",sans-serif;font-weight:700;
+    font-size:clamp(28px,5.2vw,52px);line-height:1.08;margin:0 0 16px;
+    letter-spacing:-.02em;
+  }
+  h2{
+    font-family:"Space Grotesk",sans-serif;font-weight:700;
+    font-size:clamp(22px,3.5vw,34px);line-height:1.15;margin:0 0 6px;
+    letter-spacing:-.015em;
+  }
+  .sub{color:var(--ink-2);font-size:clamp(14px,1.7vw,17px);margin:0 0 22px;max-width:70ch}
+  p{line-height:1.6}
+
+  ul{margin:0;padding-left:1.15em}
+  li{margin:.45em 0;line-height:1.5;font-size:clamp(14px,1.6vw,16.5px)}
+  li b{font-weight:600}
+  .lead li{font-size:clamp(15px,1.8vw,18px);margin:.6em 0}
+
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
+  .g4{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+
+  .card{
+    background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;box-shadow:var(--shadow);
+  }
+  .card h3{
+    font-family:"Space Grotesk",sans-serif;font-size:14.5px;margin:0 0 6px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .card p,.card li{font-size:13.5px;color:var(--ink-2);margin:.3em 0;line-height:1.5}
+  .card ul{padding-left:1.05em}
+  .num{
+    display:inline-grid;place-items:center;width:20px;height:20px;border-radius:6px;
+    background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:700;flex:0 0 auto;
+  }
+
+  .tag{
+    display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;
+    background:var(--accent-soft);color:var(--accent);
+  }
+  .tag.ok{background:transparent;color:var(--ok);border:1px solid currentColor}
+  .tag.warn{background:transparent;color:var(--warn);border:1px solid currentColor}
+  .tag.bad{background:transparent;color:var(--danger);border:1px solid currentColor}
+
+  pre{
+    background:var(--code-bg);border:1px solid var(--line);border-radius:10px;
+    padding:12px 14px;overflow-x:auto;margin:10px 0;
+    font-size:clamp(11.5px,1.35vw,13.5px);line-height:1.6;color:var(--ink);
+  }
+  pre .c{color:var(--ink-3)}
+  pre .k{color:var(--accent);font-weight:500}
+  code.inl{background:var(--code-bg);border:1px solid var(--line);padding:1px 5px;border-radius:5px;font-size:.9em}
+
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+  table{border-collapse:collapse;width:100%;min-width:520px;font-size:13.5px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+  th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+  tr:last-child td{border-bottom:none}
+  td.mono{font-size:12.5px}
+
+  .split{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  .do{border-left:3px solid var(--ok)}
+  .dont{border-left:3px solid var(--danger)}
+
+  .big-quote{
+    font-family:"Space Grotesk",sans-serif;font-size:clamp(18px,2.6vw,26px);
+    line-height:1.35;border-left:3px solid var(--accent);padding-left:16px;margin:18px 0;
+  }
+  .meta{color:var(--ink-3);font-size:13px;margin-top:26px}
+
+  /* ---------- notes ---------- */
+  .notes{display:none}
+  .drawer{
+    flex:0 0 auto;border-top:1px solid var(--line);background:var(--surface-2);
+    max-height:34vh;overflow-y:auto;padding:14px clamp(14px,3vw,34px);
+  }
+  .drawer[hidden]{display:none}
+  .drawer h4{
+    margin:0 0 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);
+  }
+  .drawer li,.drawer p{font-size:14px;color:var(--ink-2);line-height:1.55}
+
+  /* ---------- nav ---------- */
+  .navbar{
+    flex:0 0 auto;display:flex;align-items:center;gap:10px;
+    padding:10px clamp(14px,3vw,34px);border-top:1px solid var(--line);background:var(--surface);
+  }
+  button{
+    font:inherit;font-size:13px;font-weight:500;cursor:pointer;
+    background:var(--surface-2);color:var(--ink);border:1px solid var(--line);
+    padding:7px 14px;border-radius:9px;transition:.15s;
+  }
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  button:disabled{opacity:.4;cursor:not-allowed;border-color:var(--line);color:var(--ink-3)}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button.primary:hover{opacity:.9;color:#fff}
+  .navbar .spacer{flex:1}
+  .counter{font-size:12.5px;color:var(--ink-3);white-space:nowrap}
+  .hint{font-size:11.5px;color:var(--ink-3)}
+  @media (max-width:640px){.hint{display:none}.chip.opt{display:none}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">Terraform on AWS — <span>Usage &amp; Best Practices</span></div>
+  <div class="spacer"></div>
+  <div class="chip opt">3-tier platform · dev + prod</div>
+  <div class="chip">15 min</div>
+</div>
+<div class="progress"><i id="bar"></i></div>
+
+<main class="stage" id="stage">
+
+  <!-- 1 -->
+  <section class="slide active">
+    <div class="kicker">Team session · 15 minutes</div>
+    <h1>Terraform for our<br>3-tier AWS platform</h1>
+    <p class="sub">How we use it, how state and access actually work, and the rules we hold each other to before anything touches prod.</p>
+    <div class="grid g4">
+      <div class="card"><h3>Why</h3><p>Infra that is reviewable, repeatable and reversible.</p></div>
+      <div class="card"><h3>What</h3><p>VPC, EKS, RDS, IAM, ECR, Route 53 — all as code.</p></div>
+      <div class="card"><h3>Where</h3><p>Remote state in S3, locked with DynamoDB.</p></div>
+      <div class="card"><h3>Who</h3><p>Anyone can plan. Only the pipeline applies to prod.</p></div>
+    </div>
+    <p class="meta">Press <b>→</b> / <b>Space</b> to advance · <b>N</b> toggles speaker notes</p>
+    <div class="notes">
+      <ul>
+        <li>Open by framing the goal: by the end of 15 minutes everyone should be able to open a PR that changes infra and know exactly what happens to it.</li>
+        <li>Say up front you'll keep it practical — commands, our repo layout, and the guardrails — not Terraform theory.</li>
+        <li>Ask people to hold questions for the last slide so you stay on time.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="slide">
+    <div class="kicker">Agenda</div>
+    <h2>What we'll cover</h2>
+    <p class="sub">Roughly a minute a topic. The last third is the part that actually prevents outages.</p>
+    <div class="grid g2">
+      <div class="card"><h3><span class="num">1</span> Why IaC, and the core loop</h3><p>init → plan → apply, and why plan is the review artifact.</p></div>
+      <div class="card"><h3><span class="num">2</span> Our stack, layered</h3><p>Which of our AWS services live in which Terraform layer.</p></div>
+      <div class="card"><h3><span class="num">3</span> State</h3><p>S3 + DynamoDB locking, and the rules around it.</p></div>
+      <div class="card"><h3><span class="num">4</span> Repo, modules, variables</h3><p>How dev and prod stay identical but separate.</p></div>
+      <div class="card"><h3><span class="num">5</span> Secrets &amp; access</h3><p>Secrets Manager, KMS, IRSA, and our permission matrix.</p></div>
+      <div class="card"><h3><span class="num">6</span> Pipeline, pitfalls, checklist</h3><p>What gets you paged at 2am, and how to avoid it.</p></div>
+    </div>
+    <div class="notes">
+      <ul>
+        <li>Keep this slide to about 30 seconds — it's a map, not content.</li>
+        <li>Flag that section 5 maps directly to the permissions table the team already reviewed, so it should feel familiar.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="slide">
+    <div class="kicker">01 · Foundations</div>
+    <h2>Why Terraform, in one slide</h2>
+    <p class="sub">The console is fine for looking. It is terrible for remembering.</p>
+    <div class="split">
+      <div class="card dont">
+        <h3><span class="tag bad">Click-ops</span></h3>
+        <ul>
+          <li>No record of who changed what, or why</li>
+          <li>Dev and prod drift apart within weeks</li>
+          <li>Rebuilding an environment is archaeology</li>
+          <li>Review happens after the change, if at all</li>
+        </ul>
+      </div>
+      <div class="card do">
+        <h3><span class="tag ok">Terraform</span></h3>
+        <ul>
+          <li>Desired state in Git — diffable, revertible, blame-able</li>
+          <li>One module, two environments, same shape</li>
+          <li><code class="inl">plan</code> shows the blast radius <em>before</em> it happens</li>
+          <li>Review is a PR, like every other change we make</li>
+        </ul>
+      </div>
+    </div>
+    <div class="big-quote">Declarative: you describe the end state. Terraform works out the create / update / destroy steps and the order.</div>
+    <div class="notes">
+      <ul>
+        <li>Use a concrete example the team felt: a security group rule or subnet someone added by hand that nobody could explain later.</li>
+        <li>Stress "revertible" — reverting a PR is a real rollback path, and that's mostly what buys us calm during incidents.</li>
+        <li>Note the flip side honestly: once it's in Terraform, out-of-band console edits become drift and get stomped. That's the deal we're signing up for.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="slide">
+    <div class="kicker">01 · Foundations</div>
+    <h2>The core loop</h2>
+    <p class="sub">Five commands cover about 95% of day-to-day work.</p>
+    <div class="tablewrap">
+      <table>
+        <tr><th>Command</th><th>What it does</th><th>When</th></tr>
+        <tr><td class="mono">terraform init</td><td>Downloads providers, wires up the S3 backend</td><td>First run, and after provider/module changes</td></tr>
+        <tr><td class="mono">terraform fmt -recursive</td><td>Canonical formatting</td><td>Before every commit — CI fails otherwise</td></tr>
+        <tr><td class="mono">terraform validate</td><td>Syntax and type checking, no AWS calls</td><td>Fast local feedback</td></tr>
+        <tr><td class="mono">terraform plan -out=tfplan</td><td>Diffs real infra against your code</td><td>Every change. This is the review artifact</td></tr>
+        <tr><td class="mono">terraform apply tfplan</td><td>Executes exactly that saved plan</td><td>Dev: you. Prod: the pipeline, after approval</td></tr>
+      </table>
+    </div>
+    <pre><span class="c"># read a plan like a diff</span>
+  <span class="k">+</span> create        <span class="c">← new resource</span>
+  <span class="k">~</span> update in-place <span class="c">← safe-ish, read the attribute list</span>
+  <span class="k">-/+</span> replace     <span class="c">← DESTROY then create. Stop and think.</span>
+  <span class="k">-</span> destroy       <span class="c">← why? on RDS or EKS this is an outage</span></pre>
+    <div class="notes">
+      <ul>
+        <li>The single habit to sell here: always <code>plan -out</code>, then apply that file. Applying a saved plan removes the "it changed between plan and apply" class of surprise.</li>
+        <li>Point at the <code>-/+</code> line and say plainly: if you see replace next to RDS, the node group, or anything stateful, stop and get a second pair of eyes.</li>
+        <li>Mention plan output length — teach people to scroll to the summary line at the bottom first, then read upward for anything destructive.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="slide">
+    <div class="kicker">02 · Our stack</div>
+    <h2>What we're actually managing</h2>
+    <p class="sub">Every service in our matrix falls into one of five layers. Layers apply in this order and are separated by state file.</p>
+    <div class="grid g3">
+      <div class="card"><h3><span class="num">1</span> Network</h3><p>VPC, public/private subnets, Internet Gateway, NAT Gateway + Elastic IP, VPC endpoints (SSM, ECR, S3, Secrets Manager).</p><p class="mono" style="font-size:12px;color:var(--ink-3)">changes rarely · blast radius huge</p></div>
+      <div class="card"><h3><span class="num">2</span> Security</h3><p>KMS keys, IAM roles with permission boundaries, OIDC provider + IRSA, Secrets Manager and SSM parameters.</p><p class="mono" style="font-size:12px;color:var(--ink-3)">gated writes in prod</p></div>
+      <div class="card"><h3><span class="num">3</span> Data</h3><p>RDS PostgreSQL — the Recon database plus per-service databases, encrypted with our KMS key.</p><p class="mono" style="font-size:12px;color:var(--ink-3)">stateful · never auto-replace</p></div>
+      <div class="card"><h3><span class="num">4</span> Platform</h3><p>EKS cluster and EC2 node groups, ECR repositories, internal ALB, ACM certificates, Route 53 records.</p><p class="mono" style="font-size:12px;color:var(--ink-3)">the busy layer</p></div>
+      <div class="card"><h3><span class="num">5</span> Observability</h3><p>CloudWatch log groups, metrics, alarms. Cheap to change, easy to forget.</p><p class="mono" style="font-size:12px;color:var(--ink-3)">ship it with the service</p></div>
+      <div class="card" style="border-style:dashed"><h3>Not in Terraform</h3><p>App deployments and Kubernetes manifests. Terraform builds the cluster; our delivery tooling puts workloads on it.</p></div>
+    </div>
+    <div class="notes">
+      <ul>
+        <li>Explain why layers are split: a typo in the platform layer should never be able to plan a destroy on the VPC or the database.</li>
+        <li>Smaller state per layer also means faster plans and fewer lock conflicts when two people work at once.</li>
+        <li>Layers talk to each other through remote state data sources or SSM parameters — outputs, not copy-pasted IDs.</li>
+        <li>Draw the boundary clearly at the end: Terraform stops at the cluster. Pods are someone else's pipeline.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section class="slide">
+    <div class="kicker">03 · State</div>
+    <h2>State is the whole ballgame</h2>
+    <p class="sub">State is Terraform's map from your code to real AWS resource IDs. Lose it and Terraform will happily try to build everything a second time.</p>
+    <pre><span class="c"># envs/prod/backend.tf</span>
+<span class="k">terraform</span> {
+  <span class="k">backend</span> <span class="k">"s3"</span> {
+    bucket         = <span class="k">"acme-tfstate-prod"</span>
+    key            = <span class="k">"platform/terraform.tfstate"</span>   <span class="c"># one key per layer</span>
+    region         = <span class="k">"ap-south-1"</span>
+    dynamodb_table = <span class="k">"acme-tf-locks"</span>              <span class="c"># stops concurrent applies</span>
+    encrypt        = <span class="k">true</span>
+    kms_key_id     = <span class="k">"alias/acme-tfstate"</span>
+  }
+}</pre>
+    <div class="split">
+      <div class="card do"><h3><span class="tag ok">Rules</span></h3><ul>
+        <li>Versioning <b>on</b> for the state bucket — it is your undo button</li>
+        <li>One state key per layer, per environment</li>
+        <li>Let the DynamoDB lock do its job; if it's stuck, find who's applying</li>
+      </ul></div>
+      <div class="card dont"><h3><span class="tag bad">Never</span></h3><ul>
+        <li>Commit <code class="inl">*.tfstate</code> to Git</li>
+        <li>Hand-edit the state JSON</li>
+        <li><code class="inl">force-unlock</code> without confirming nobody is mid-apply</li>
+        <li>Treat state as non-sensitive — it holds resource attributes in plain text</li>
+      </ul></div>
+    </div>
+    <div class="notes">
+      <ul>
+        <li>This is the most important slide. Slow down here.</li>
+        <li>The matrix already gives leads full S3/DynamoDB and engineers read-write — explain that this is deliberate, so nobody is blocked, but everybody is logged.</li>
+        <li>Tell the force-unlock story in the negative: an unlock during a live apply can leave half-created infrastructure with no record of it.</li>
+        <li>If someone asks about recovery: bucket versioning plus a prior version is the restore path, and it's a two-lead operation.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 7 -->
+  <section class="slide">
+    <div class="kicker">04 · Structure</div>
+    <h2>Repo layout</h2>
+    <p class="sub">Modules describe <em>what</em> a thing is. Environments describe <em>how big</em> and <em>which account</em>.</p>
+    <div class="split">
+      <div>
+        <pre>infra/
+├── modules/
+│   ├── network/      <span class="c"># vpc, subnets, nat, endpoints</span>
+│   ├── eks/          <span class="c"># cluster + node groups</span>
+│   ├── rds/
+│   ├── ecr/
+│   └── iam-irsa/
+├── envs/
+│   ├── dev/
+│   │   ├── main.tf
+│   │   ├── backend.tf
+│   │   ├── dev.tfvars
+│   │   └── versions.tf
+│   └── prod/
+│       └── ... same shape
+└── .github/workflows/terraform.yml</pre>
+      </div>
+      <div class="card">
+        <h3>Why this shape</h3>
+        <ul>
+          <li><b>Same module, both envs.</b> If it works in dev, prod differs only by inputs — not by code.</li>
+          <li><b>Separate directories, not workspaces.</b> Different accounts, different state, no chance of applying to the wrong one because of a stale <code class="inl">workspace select</code>.</li>
+          <li><b>Pin everything.</b> Terraform version, provider versions, module refs. An unpinned provider upgrade is an unplanned change.</li>
+          <li><b>Tag everything.</b> Use provider <code class="inl">default_tags</code> so owner, env and cost-centre land on every resource for free.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="notes">
+      <ul>
+        <li>Anticipate the workspaces question — someone always asks. Answer: workspaces share a backend and are easy to mis-select; separate directories make the blast radius visible in the file path.</li>
+        <li>Connect default_tags back to the billing line in the matrix: leads have Cost Explorer, but it only tells a useful story if tags are consistent.</li>
+        <li>Mention that a new environment should be a copy of envs/dev plus a different tfvars file — if it needs new module code, that's a smell.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 8 -->
+  <section class="slide">
+    <div class="kicker">04 · Structure</div>
+    <h2>Modules and variables</h2>
+    <p class="sub">A module with hardcoded values is a copy-paste waiting to happen.</p>
+    <pre><span class="c"># envs/prod/main.tf</span>
+<span class="k">module</span> <span class="k">"eks"</span> {
+  source  = <span class="k">"../../modules/eks"</span>
+  env     = <span class="k">var</span>.env            <span class="c"># "prod"</span>
+  vpc_id  = <span class="k">module</span>.network.vpc_id
+  subnets = <span class="k">module</span>.network.private_subnet_ids
+  node_instance_type = <span class="k">var</span>.node_instance_type
+  node_desired_size  = <span class="k">var</span>.node_desired_size
+}
+
+<span class="c"># variables.tf — validate early, fail fast</span>
+<span class="k">variable</span> <span class="k">"env"</span> {
+  type = <span class="k">string</span>
+  <span class="k">validation</span> {
+    condition     = contains([<span class="k">"dev"</span>, <span class="k">"prod"</span>], <span class="k">var</span>.env)
+    error_message = <span class="k">"env must be dev or prod."</span>
+  }
+}</pre>
+    <div class="grid g3">
+      <div class="card"><h3>Inputs</h3><p>Typed, documented, validated. Defaults only where a default is genuinely safe.</p></div>
+      <div class="card"><h3>Outputs</h3><p>Expose IDs and endpoints. Other layers consume outputs, never hardcoded ARNs.</p></div>
+      <div class="card"><h3><code class="inl">for_each</code> over <code class="inl">count</code></h3><p>Keyed by name, so removing the middle item doesn't renumber and recreate its neighbours.</p></div>
+    </div>
+    <div class="notes">
+      <ul>
+        <li>The for_each point is worth 20 seconds of real explanation — with count, deleting item 2 of 5 shifts indices and Terraform plans three unnecessary replacements. People hit this and panic.</li>
+        <li>Say that dev and prod tfvars should sit side by side in review, so a reviewer can see prod is bigger but not structurally different.</li>
+        <li>If asked about remote module registries: fine later, but pin to a version tag, never to a branch.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 9 -->
+  <section class="slide">
+    <div class="kicker">05 · Security</div>
+    <h2>Secrets: what goes where</h2>
+    <p class="sub">Terraform is bad at holding secrets, because anything it manages ends up in state.</p>
+    <div class="split">
+      <div class="card do"><h3><span class="tag ok">Do</span></h3><ul>
+        <li>Create the secret <em>container</em> in Terraform; let the value be set out of band or generated</li>
+        <li>Read at deploy time via <code class="inl">data</code> sources, or from the pod via IRSA</li>
+        <li>Mark variables and outputs <code class="inl">sensitive = true</code></li>
+        <li>Encrypt state, RDS, ECR, S3 and Secrets Manager with our KMS key</li>
+        <li>Rotate DB credentials on a schedule, not on a vibe</li>
+      </ul></div>
+      <div class="card dont"><h3><span class="tag bad">Don't</span></h3><ul>
+        <li>Put a password in a <code class="inl">.tf</code> or <code class="inl">.tfvars</code> file — it's in Git forever</li>
+        <li>Echo secrets in outputs or CI logs</li>
+        <li>Assume <code class="inl">sensitive = true</code> encrypts anything — it only hides it from console output</li>
+        <li>Bake static AWS keys into pods when IRSA exists</li>
+      </ul></div>
+    </div>
+    <div class="big-quote">If a secret ever touches a plan, treat it as compromised and rotate it. Cheaper than the alternative.</div>
+    <div class="notes">
+      <ul>
+        <li>Be blunt: state is plain-text JSON. Encryption at rest protects the file, not the person who can read the bucket.</li>
+        <li>Tie to the matrix — engineers have read-only on prod secrets precisely so a routine plan can't leak or overwrite production credentials.</li>
+        <li>IRSA is the headline security win: pod-scoped AWS access instead of node-wide keys, so a compromised pod gets one role, not the whole node's permissions.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 10 -->
+  <section class="slide">
+    <div class="kicker">05 · Security</div>
+    <h2>Who can do what</h2>
+    <p class="sub">Our permission matrix in one sentence: full freedom in dev, read and plan in prod, apply through the pipeline.</p>
+    <div class="tablewrap">
+      <table>
+        <tr><th>Area</th><th>Dev</th><th>Prod</th></tr>
+        <tr><td>Compute, network, data<br><span style="color:var(--ink-3);font-size:12px">EKS, EC2, VPC, NAT, RDS</span></td><td><span class="tag ok">Full</span></td><td><span class="tag warn">Read + plan</span></td></tr>
+        <tr><td>Secrets Manager / SSM</td><td>Lead full · engineer read-write</td><td>Lead gated write · engineer read only</td></tr>
+        <tr><td>IAM</td><td>Create, within a permission boundary</td><td>Lead authors · engineers no direct access</td></tr>
+        <tr><td>ECR</td><td>Push / pull</td><td>Pull + promote — no rebuilding for prod</td></tr>
+        <tr><td>Terraform state (S3 / DynamoDB)</td><td><span class="tag ok">Full</span></td><td>Read-write to state and lock</td></tr>
+        <tr><td>Apply to prod</td><td>—</td><td><span class="tag">CI/CD pipeline role only</span></td></tr>
+        <tr><td>Break-glass</td><td>—</td><td>Audited, leads + one named engineer</td></tr>
+      </table>
+    </div>
+    <div class="notes">
+      <ul>
+        <li>Emphasise that "read + plan" on prod is not a demotion — everyone can still diagnose, diff and propose. What's removed is the ability to apply by accident.</li>
+        <li>The ECR rule matters: we promote the exact image tested in dev rather than rebuilding for prod, so the artifact is identical.</li>
+        <li>Permission boundaries on IAM stop a role from granting itself more than it should — worth one sentence.</li>
+        <li>Break-glass: explain it exists, it's audited, and using it means a written follow-up. Nobody should feel they need it for routine work.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 11 -->
+  <section class="slide">
+    <div class="kicker">06 · Pipeline</div>
+    <h2>How a change reaches prod</h2>
+    <p class="sub">Every prod change follows the same path. No exceptions, including for leads.</p>
+    <div class="grid g3">
+      <div class="card"><h3><span class="num">1</span> PR opened</h3><p><code class="inl">fmt</code> check, <code class="inl">validate</code>, <code class="inl">tflint</code>, and a security scan. Fast, fails loudly.</p></div>
+      <div class="card"><h3><span class="num">2</span> Plan on dev</h3><p>Pipeline plans and applies to dev automatically. Reality check before anyone reviews.</p></div>
+      <div class="card"><h3><span class="num">3</span> Plan on prod</h3><p>Read-only prod plan posted as a PR comment. This is what the reviewer actually approves.</p></div>
+      <div class="card"><h3><span class="num">4</span> Human approval</h3><p>A lead approves the PR. For destructive plans, two.</p></div>
+      <div class="card"><h3><span class="num">5</span> Apply on merge</h3><p>The gated apply role runs <code class="inl">apply</code> against the saved plan. OIDC, no long-lived keys.</p></div>
+      <div class="card"><h3><span class="num">6</span> Drift check</h3><p>Nightly <code class="inl">plan</code> on both envs. A non-empty plan means someone clicked something.</p></div>
+    </div>
+    <div class="notes">
+      <ul>
+        <li>The reviewer approves a plan, not just a diff of HCL. That distinction is the point of step 3.</li>
+        <li>The pipeline authenticates to AWS with OIDC and assumes a role — no stored AWS keys in CI.</li>
+        <li>Nightly drift detection is how we catch console changes early instead of discovering them mid-incident.</li>
+        <li>If asked "what if the pipeline is down and prod is on fire" — that's exactly what break-glass is for, and it's audited.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 12 -->
+  <section class="slide">
+    <div class="kicker">07 · Pitfalls</div>
+    <h2>Things that bite</h2>
+    <p class="sub">Every one of these has taken down someone's environment.</p>
+    <div class="grid g2">
+      <div class="card"><h3><span class="tag bad">!</span> Silent replace</h3><p>A changed field on RDS or a node group can force <code class="inl">-/+</code>. Read the plan summary before approving.</p></div>
+      <div class="card"><h3><span class="tag bad">!</span> <code class="inl">terraform destroy</code> in the wrong directory</h3><p>Guard stateful resources with <code class="inl">prevent_destroy</code> and keep RDS deletion protection on.</p></div>
+      <div class="card"><h3><span class="tag bad">!</span> Console fixes during an incident</h3><p>Understandable, but write it back into code the same week or the next apply reverts it.</p></div>
+      <div class="card"><h3><span class="tag bad">!</span> Unpinned providers</h3><p>A minor AWS provider bump can rewrite resource defaults. Commit the lock file.</p></div>
+      <div class="card"><h3><span class="tag bad">!</span> Routine <code class="inl">-target</code></h3><p>A debugging tool, not a workflow. It leaves state partially applied and hides drift.</p></div>
+      <div class="card"><h3><span class="tag bad">!</span> One giant state file</h3><p>Slow plans, lock contention, and one blast radius for everything. Hence the layers.</p></div>
+    </div>
+    <div class="notes">
+      <ul>
+        <li>Pick one or two of these to tell as a short story rather than reading all six — it lands better and saves time.</li>
+        <li>The console-fix point deserves nuance: we are not banning emergency action, we are requiring it be reconciled afterwards.</li>
+        <li>Mention that .terraform.lock.hcl belongs in Git — people delete it thinking it's noise.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 13 -->
+  <section class="slide">
+    <div class="kicker">08 · Reference</div>
+    <h2>Commands worth knowing</h2>
+    <p class="sub">Beyond the core loop — mostly for when something has gone sideways.</p>
+    <div class="tablewrap">
+      <table>
+        <tr><th>Command</th><th>Use it for</th></tr>
+        <tr><td class="mono">terraform state list</td><td>What does Terraform think it manages?</td></tr>
+        <tr><td class="mono">terraform state show &lt;addr&gt;</td><td>Inspect one resource's recorded attributes</td></tr>
+        <tr><td class="mono">terraform state mv &lt;a&gt; &lt;b&gt;</td><td>Renaming or refactoring into a module without recreating</td></tr>
+        <tr><td class="mono">terraform import &lt;addr&gt; &lt;id&gt;</td><td>Adopt something that already exists in AWS</td></tr>
+        <tr><td class="mono">terraform apply -replace=&lt;addr&gt;</td><td>Deliberately recreate one resource (replaces old <code class="inl">taint</code>)</td></tr>
+        <tr><td class="mono">terraform output -json</td><td>Feed endpoints and ARNs to other tooling</td></tr>
+        <tr><td class="mono">terraform force-unlock &lt;id&gt;</td><td>Last resort, after confirming nobody is applying</td></tr>
+      </table>
+    </div>
+    <p class="meta">State-mutating commands — <code class="inl">mv</code>, <code class="inl">rm</code>, <code class="inl">import</code>, <code class="inl">force-unlock</code> — are a lead-pairs operation in prod, never solo.</p>
+    <div class="notes">
+      <ul>
+        <li>Frame the top three as everyday debugging tools, and the bottom four as "tell someone before you run this".</li>
+        <li>state mv is the one that saves refactors — without it, moving a resource into a module means destroy and recreate.</li>
+        <li>Note that import is how we'd bring any legacy hand-built resources under management if we find them.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 14 -->
+  <section class="slide">
+    <div class="kicker">09 · Checklist</div>
+    <h2>The rules we hold each other to</h2>
+    <p class="sub">If you remember nothing else, remember this list.</p>
+    <div class="grid g2">
+      <div class="card"><ul class="lead">
+        <li><b>Plan before apply</b>, always with <code class="inl">-out</code></li>
+        <li><b>Read the plan summary</b> — count the destroys</li>
+        <li><b>Nothing sensitive in Git</b>, ever</li>
+        <li><b>Pin versions</b> and commit the lock file</li>
+        <li><b>Small PRs</b> — one layer, one intent</li>
+      </ul></div>
+      <div class="card"><ul class="lead">
+        <li><b>Dev first</b>, prod never gets an untested module</li>
+        <li><b>Tag everything</b> via <code class="inl">default_tags</code></li>
+        <li><b>Prod applies go through the pipeline</b></li>
+        <li><b>Fix drift in code</b>, not in the console</li>
+        <li><b>Ask before touching state</b></li>
+      </ul></div>
+    </div>
+    <div class="notes">
+      <ul>
+        <li>Slow right down and read these out — this is the slide people will screenshot.</li>
+        <li>Offer to paste this list into the team channel and pin it.</li>
+        <li>"Small PRs" is worth defending: a 400-line plan gets rubber-stamped, a 20-line plan gets reviewed.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 15 -->
+  <section class="slide">
+    <div class="kicker">Wrap up</div>
+    <h2>Takeaways</h2>
+    <div class="grid g3">
+      <div class="card"><h3><span class="num">1</span> Code, not clicks</h3><p>If it isn't in the repo, it doesn't exist — and it will be reverted.</p></div>
+      <div class="card"><h3><span class="num">2</span> The plan is the review</h3><p>We approve plans, not intentions.</p></div>
+      <div class="card"><h3><span class="num">3</span> State is precious</h3><p>Remote, encrypted, versioned, locked, and never hand-edited.</p></div>
+    </div>
+    <div class="big-quote">Dev is where you experiment. Prod is where you replay something that already worked.</div>
+    <h2 style="margin-top:26px">Next steps for the team</h2>
+    <ul class="lead">
+      <li>Confirm the layer split and state key naming before we write the first module</li>
+      <li>Stand up the state bucket, DynamoDB lock table and KMS key first — everything else depends on them</li>
+      <li>Wire the OIDC pipeline role and the prod plan comment early, so the guardrails exist before the infra does</li>
+    </ul>
+    <p class="meta">Questions?</p>
+    <div class="notes">
+      <ul>
+        <li>Land on the three takeaways, then move straight to next steps so the session produces decisions rather than just information.</li>
+        <li>Ask for one volunteer per next step before people leave the room.</li>
+        <li>Leave two to three minutes for questions — if you're over time, skip slide 13 and come back to it in the channel.</li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<aside class="drawer" id="drawer" hidden>
+  <h4>Speaker notes</h4>
+  <div id="notesBody"></div>
+</aside>
+
+<nav class="navbar">
+  <button id="prev">← Prev</button>
+  <button id="next" class="primary">Next →</button>
+  <span class="counter" id="counter">1 / 15</span>
+  <div class="spacer"></div>
+  <span class="hint">← → navigate · N notes</span>
+  <button id="notesBtn">Notes</button>
+</nav>
+
+<script>
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var i = 0, notesOn = false;
+  var bar = document.getElementById('bar');
+  var counter = document.getElementById('counter');
+  var drawer = document.getElementById('drawer');
+  var notesBody = document.getElementById('notesBody');
+  var prev = document.getElementById('prev');
+  var next = document.getElementById('next');
+
+  function render(){
+    slides.forEach(function(s, n){ s.classList.toggle('active', n === i); });
+    counter.textContent = (i + 1) + ' / ' + slides.length;
+    bar.style.width = ((i + 1) / slides.length * 100) + '%';
+    prev.disabled = i === 0;
+    next.disabled = i === slides.length - 1;
+    var n = slides[i].querySelector('.notes');
+    notesBody.innerHTML = n ? n.innerHTML : '<p>No notes for this slide.</p>';
+    drawer.hidden = !notesOn;
+    document.getElementById('stage').scrollTop = 0;
+  }
+  function go(d){ i = Math.min(slides.length - 1, Math.max(0, i + d)); render(); }
+
+  prev.addEventListener('click', function(){ go(-1); });
+  next.addEventListener('click', function(){ go(1); });
+  document.getElementById('notesBtn').addEventListener('click', function(){ notesOn = !notesOn; render(); });
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown'){ e.preventDefault(); go(1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp'){ e.preventDefault(); go(-1); }
+    else if (e.key === 'Home'){ i = 0; render(); }
+    else if (e.key === 'End'){ i = slides.length - 1; render(); }
+    else if (e.key === 'n' || e.key === 'N'){ notesOn = !notesOn; render(); }
+  });
+
+  render();
+</script>
+</body>
+</html>
